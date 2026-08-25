@@ -1,0 +1,30 @@
+# Core Telegram Bot
+python-telegram-bot[ext]>=22.0,<23
+
+# Database & ORM
+SQLAlchemy[asyncio]>=2.0.35
+asyncpg>=0.29.0
+alembic>=1.13.2
+
+# Configuration
+pydantic>=2.9.2
+pydantic-settings>=2.5.2
+python-dotenv>=1.0.1
+
+# State / worker
+redis>=5.1.0
+arq>=0.26.0
+
+# Utilities
+structlog>=24.4.0
+orjson>=3.10.7
+tenacity>=9.0.0
+httpx>=0.27.2
+phonenumbers>=8.13.45
+Pillow>=10.4.0
+
+# Testing / tooling
+pytest>=8.3.3
+pytest-asyncio>=0.24.0
+ruff>=0.6.0
+mypy>=1.11.0
