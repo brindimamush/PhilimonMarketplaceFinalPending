@@ -335,13 +335,16 @@ async def admin_search(session: AsyncSession, query: str, limit: int = 5):
             user_filters.append(User.phone_number.ilike(f"%{v}%"))
             user_filters.append(BuyerProfile.phone_number.ilike(f"%{v}%"))
             user_filters.append(SellerProfile.phone_number.ilike(f"%{v}%"))
+
     users = []
     if user_filters:
         users = (
             await session.execute(
                 select(User)
-                .outerjoin(BuyerProfile)
-                .outerjoin(SellerProfile)
+                # FIX: Explicitly define the onclause for both outer joins 
+                # to prevent SQLAlchemy AmbiguousForeignKeysError
+                .outerjoin(BuyerProfile, BuyerProfile.user_id == User.id)
+                .outerjoin(SellerProfile, SellerProfile.user_id == User.id)
                 .where(or_(*user_filters))
                 .order_by(User.created_at.desc())
                 .limit(limit)
