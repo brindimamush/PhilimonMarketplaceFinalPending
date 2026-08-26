@@ -239,24 +239,24 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     async with session_scope() as session:
         admin_user = await get_or_create_user(session, tg_user)
 
-        # ------------------------------------------------------------
+         # ------------------------------------------------------------
         # Admin support ticket response
         # ------------------------------------------------------------
         respond_session = await get_session(session, admin_user.id, "ADMIN_SUPPORT_RESPOND")
         if respond_session:
             ticket_id = UUID(respond_session.payload["ticket_id"])
-
             try:
+                import time as _time
+                # Unique key per response so admins can respond multiple times
+                idem_key = f"respond_support_ticket:{ticket_id}:{int(_time.time() * 1000)}"
                 await execute_idempotent(
                     session,
-                    f"respond_support_ticket:{ticket_id}",
+                    idem_key,
                     "SUPPORT_RESPOND",
                     lambda: respond_support_ticket(session, tg_user, ticket_id, text),
                     user_id=admin_user.id,
                 )
-
                 await clear_workflow(session, admin_user.id, "ADMIN_SUPPORT_RESPOND")
-
                 markup = InlineKeyboardMarkup(
                     [
                         [
@@ -271,14 +271,18 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         ]
                     ]
                 )
-
                 await message.reply_text("Response saved.", reply_markup=markup)
             except DomainError as exc:
                 await message.reply_text(str(exc))
             except Exception:
                 logger.exception("admin_support_respond_failed")
                 await message.reply_text("Support response failed.")
-
+            finally:
+                # Always clear the workflow so admin is not stuck in a loop
+                try:
+                    await clear_workflow(session, admin_user.id, "ADMIN_SUPPORT_RESPOND")
+                except Exception:
+                    pass
             return True
 
         # ------------------------------------------------------------

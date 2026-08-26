@@ -10,8 +10,8 @@ from telegram import User as TelegramUser
 from app.config.settings import get_settings
 from app.core.exceptions import ConflictError, DomainError, LocalizedDomainError, NotFoundError
 from app.core.utils import utcnow, write_audit
-from app.models import SupportTicket, TicketStatus
-from app.services.system_service import notify_admins
+from app.models import SupportTicket, TicketStatus, User
+from app.services.system_service import enqueue_outbox, notification_payload, notify_admins
 from app.services.user_service import (
     get_buyer_profile,
     get_or_create_user,
@@ -110,7 +110,6 @@ async def create_support_ticket(
 
     return ticket
 
-
 async def respond_support_ticket(
     session: AsyncSession,
     admin_tg_user: TelegramUser,
@@ -119,24 +118,22 @@ async def respond_support_ticket(
 ) -> SupportTicket:
     """
     Admin responds to a ticket.
-
     Ticket moves to IN_PROGRESS.
+    The ticket owner is notified via Telegram.
     """
     admin_user = await get_or_create_user(session, admin_tg_user)
-
     ticket = await session.get(SupportTicket, ticket_id, with_for_update=True)
     if not ticket:
         raise NotFoundError("Support ticket not found.")
-
     if ticket.status == TicketStatus.CLOSED:
         raise ConflictError("This ticket is already closed.")
-
     response = (response or "").strip()
     if len(response) < settings.support_min_length:
         raise DomainError("Response must be at least 5 characters.")
 
     ticket.status = TicketStatus.IN_PROGRESS
     ticket.admin_response = response
+    await session.flush()
 
     await write_audit(
         session,
@@ -147,5 +144,23 @@ async def respond_support_ticket(
         entity_id=ticket.id,
         after={"status": ticket.status.value},
     )
+
+    # ---- Notify the ticket owner ----
+    ticket_owner = await session.get(User, ticket.user_id)
+    if ticket_owner:
+        user_text = "\n".join(
+            [
+                f"🎫 Ticket {ticket.ticket_number} – Admin Response",
+                "",
+                response,
+                "",
+                "You can reply to this ticket by sending a message.",
+            ]
+        )
+        await enqueue_outbox(
+            session,
+            "notification.telegram",
+            notification_payload(ticket_owner.telegram_id, user_text),
+        )
 
     return ticket

@@ -46,6 +46,8 @@ from app.models import (
     PurchaseRequest,
     SellerApprovalStatus,
     SellerOffer,
+    SupportTicket,
+    TicketStatus,
     UserStatus,
 )
 from app.services.admin_service import approve_seller_application, decline_seller_application, settle_request
@@ -64,6 +66,7 @@ from app.services.marketplace_service import (
     submit_seller_offer,
 )
 from app.services.support_service import create_support_ticket
+from app.services.system_service import enqueue_outbox, notification_payload, notify_admins
 from app.services.user_service import (
     get_buyer_profile,
     get_or_create_user,
@@ -304,6 +307,49 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         # Support flow
         # ------------------------------------------------------------
         support_session = await get_session(session, user.id, "SUPPORT_TICKET")
+                 # ------------------------------------------------------------
+         # User reply to an existing open / in-progress ticket
+         # ------------------------------------------------------------
+        open_ticket = await session.scalar(
+             select(SupportTicket)
+             .where(
+                 SupportTicket.user_id == user.id,
+                 SupportTicket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]),
+             )
+             .order_by(SupportTicket.created_at.desc())
+             .limit(1)
+         )
+        if open_ticket and not support_session:
+             try:
+                 # Append user reply to the ticket description / conversation
+                 open_ticket.description = (
+                     (open_ticket.description or "")
+                     + f"\n\n--- User reply ---\n{message.text.strip()}"
+                 )
+                 open_ticket.status = TicketStatus.OPEN  # re-open for admin attention
+                 await session.flush()
+
+                 # Notify admins of the reply
+                 admin_text = (
+                     f"💬 User replied on ticket {open_ticket.ticket_number}:\n\n"
+                     f"{message.text.strip()}"
+                 )
+                 buttons = [
+                     [
+                         {"text": "View Ticket", "callback_data": f"support:view:{open_ticket.id}"},
+                         {"text": "Respond", "callback_data": f"support:respond:{open_ticket.id}"},
+                     ]
+                 ]
+                 await notify_admins(session, text=admin_text, buttons=buttons)
+
+                 await message.reply_text(
+                     get_text(lang, "support.ticket_created", ticket_number=open_ticket.ticket_number)
+                 )
+             except Exception:
+                 logger.exception("user_ticket_reply_failed")
+                 await message.reply_text(get_text(lang, "error.generic"))
+             return
+        
         if support_session:
             payload = support_session.payload or {}
             draft_id = payload.get("draft_id") or str(support_session.id)
