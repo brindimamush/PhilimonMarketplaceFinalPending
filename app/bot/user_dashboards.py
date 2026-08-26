@@ -7,12 +7,16 @@ from telegram.ext import ContextTypes
 
 from app.db.session import session_scope
 from app.i18n import get_text, status_text, supported_language
-from app.models import PurchaseRequest, RequestStatus, SellerOffer
+from app.models import PurchaseRequest, RequestStatus, SellerApprovalStatus, SellerOffer, UserStatus
 from app.services.marketplace_service import (
     get_buyer_requests_page,
     get_seller_offers_page,
 )
-from app.services.user_service import get_or_create_user
+from app.services.user_service import (
+    get_or_create_user,
+    get_buyer_profile,
+    get_seller_profile
+)
 
 logger = structlog.get_logger()
 
@@ -44,13 +48,26 @@ async def my_offers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def _render_requests(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int) -> None:
     tg_user = update.effective_user
     query = update.callback_query
-
     if not tg_user:
         return
 
     async with session_scope() as session:
         user = await get_or_create_user(session, tg_user)
         lang = supported_language(user.language)
+
+        if query:
+            await query.answer()
+
+        # Suspended users cannot use marketplace dashboards
+        if user.status == UserStatus.SUSPENDED:
+            await _reply_or_edit(update, get_text(lang, "suspended.message"))
+            return
+
+        # /myrequests requires buyer registration
+        buyer = await get_buyer_profile(session, user.id)
+        if not buyer:
+            await _reply_or_edit(update, get_text(lang, "error.register_buyer_first"))
+            return
 
         page, total_pages, total, requests = await get_buyer_requests_page(
             session,
@@ -59,15 +76,11 @@ async def _render_requests(update: Update, context: ContextTypes.DEFAULT_TYPE, p
             PAGE_SIZE,
         )
 
-        if query:
-            await query.answer()
-
         if not requests:
             await _reply_or_edit(update, get_text(lang, "my_requests.empty"))
             return
 
         rows = []
-
         for request in requests:
             label = f"{request.request_number} • {status_text(lang, request.status.value)}"
             rows.append(
@@ -87,7 +100,6 @@ async def _render_requests(update: Update, context: ContextTypes.DEFAULT_TYPE, p
                     callback_data=f"myreq:page:{page - 1}",
                 )
             )
-
         if page < total_pages:
             nav.append(
                 InlineKeyboardButton(
@@ -95,7 +107,6 @@ async def _render_requests(update: Update, context: ContextTypes.DEFAULT_TYPE, p
                     callback_data=f"myreq:page:{page + 1}",
                 )
             )
-
         if nav:
             rows.append(nav)
 
@@ -115,20 +126,41 @@ async def _render_requests(update: Update, context: ContextTypes.DEFAULT_TYPE, p
             total_pages=total_pages,
             total=total,
         )
-
         await _reply_or_edit(update, text, InlineKeyboardMarkup(rows))
 
 
 async def _render_offers(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int) -> None:
     tg_user = update.effective_user
     query = update.callback_query
-
     if not tg_user:
         return
 
     async with session_scope() as session:
         user = await get_or_create_user(session, tg_user)
         lang = supported_language(user.language)
+
+        if query:
+            await query.answer()
+
+        # Suspended users cannot use marketplace dashboards
+        if user.status == UserStatus.SUSPENDED:
+            await _reply_or_edit(update, get_text(lang, "suspended.message"))
+            return
+
+        # /myoffers requires an approved seller profile
+        seller = await get_seller_profile(session, user.id)
+
+        if not seller:
+            await _reply_or_edit(update, get_text(lang, "error.register_seller_first"))
+            return
+
+        if seller.approval_status == SellerApprovalStatus.PENDING:
+            await _reply_or_edit(update, get_text(lang, "seller.application_submitted"))
+            return
+
+        if seller.approval_status == SellerApprovalStatus.DECLINED:
+            await _reply_or_edit(update, get_text(lang, "seller_app.declined"))
+            return
 
         page, total_pages, total, offers = await get_seller_offers_page(
             session,
@@ -137,21 +169,16 @@ async def _render_offers(update: Update, context: ContextTypes.DEFAULT_TYPE, pag
             PAGE_SIZE,
         )
 
-        if query:
-            await query.answer()
-
         if not offers:
             await _reply_or_edit(update, get_text(lang, "my_offers.empty"))
             return
 
         rows = []
-
         for offer, request in offers:
             label = (
                 f"{request.request_number} • {offer.price:,.2f} {offer.currency} • "
                 f"{status_text(lang, offer.status.value)}"
             )
-
             rows.append(
                 [
                     InlineKeyboardButton(
@@ -169,7 +196,6 @@ async def _render_offers(update: Update, context: ContextTypes.DEFAULT_TYPE, pag
                     callback_data=f"myoffer:page:{page - 1}",
                 )
             )
-
         if page < total_pages:
             nav.append(
                 InlineKeyboardButton(
@@ -177,7 +203,6 @@ async def _render_offers(update: Update, context: ContextTypes.DEFAULT_TYPE, pag
                     callback_data=f"myoffer:page:{page + 1}",
                 )
             )
-
         if nav:
             rows.append(nav)
 
@@ -197,7 +222,6 @@ async def _render_offers(update: Update, context: ContextTypes.DEFAULT_TYPE, pag
             total_pages=total_pages,
             total=total,
         )
-
         await _reply_or_edit(update, text, InlineKeyboardMarkup(rows))
 
 

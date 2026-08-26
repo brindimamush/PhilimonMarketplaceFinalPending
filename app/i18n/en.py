@@ -81,6 +81,7 @@ STRINGS = {
     "error.ethiopian_phone": "❌ Ethiopian phone number required.",
     "error.invalid_ethiopian_phone": "❌ Invalid Ethiopian phone number.",
     "error.register_buyer_first": "❌ Register as a buyer first.",
+    "error.register_seller_first": "❌ Register as a seller first to use this command.",
     "error.max_pending_requests": (
         "⚠️ You can have at most {max} requests pending admin approval. "
         "Please wait until one is approved or declined before submitting another."

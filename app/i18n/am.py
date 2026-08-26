@@ -81,6 +81,7 @@ STRINGS = {
     "error.ethiopian_phone": "❌ የኢትዮጵያ ስልክ ቁጥር ያስፈልጋል።",
     "error.invalid_ethiopian_phone": "❌ የተሳሳተ የኢትዮጵያ ስልክ ቁጥር።",
     "error.register_buyer_first": "❌ እባክዎ መጀመሪያ እንደ ገዢ ይመዝገቡ።",
+    "error.register_seller_first": "❌ ይህን ትዕዛዝ ለመጠቀም መጀመሪያ እንደ ሻጭ ይመዝገቡ።",
     "error.max_pending_requests": (
         "⚠️ ቢበዛ {max} የአስተዳዳሪ ፍቃድ የሚጠብቁ ጥያቄዎች ብቻ ሊኖሩዎት ይችላሉ። "
         "ሌላ ከማስገባትዎ በፊት እባክዎ አንዱ እስከሚጸድቅ ወይም ውድቅ እስከሚደረግ ይጠብቁ።"
