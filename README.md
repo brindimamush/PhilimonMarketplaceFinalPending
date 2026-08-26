@@ -1,4 +1,3 @@
-Here is a complete `README.md` you can copy and paste directly.
 
 ```markdown
 # 🛒 Telegram Marketplace Bot
