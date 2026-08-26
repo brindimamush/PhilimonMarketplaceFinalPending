@@ -504,23 +504,43 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 except Exception:
                     pass
             return
-            # ------------------------------------------------------------
+        # ------------------------------------------------------------
         # Language selection
         # ------------------------------------------------------------
         if data.startswith("lang:set:"):
             code = data.split(":")[-1]
-
             async with session_scope() as session:
                 user = await set_user_language(session, tg_user, code)
                 lang = supported_language(user.language)
+                buyer = await get_buyer_profile(session, user.id)
+                seller = await get_seller_profile(session, user.id)
 
             await query.answer(get_text(lang, "language.updated"))
 
             if query.message:
                 await query.message.reply_text(get_text(lang, "language.updated"))
 
+                # ---- Re-render the correct menu in the NEW language ----
+                if not buyer and not seller:
+                    await query.message.reply_text(
+                        get_text(lang, "start.welcome"),
+                        reply_markup=build_registration_markup(lang),
+                    )
+                else:
+                    seller_approved = bool(
+                        seller and seller.approval_status == SellerApprovalStatus.APPROVED
+                    )
+                    markup = build_main_menu_markup(
+                        has_buyer=bool(buyer),
+                        seller_approved=seller_approved,
+                        is_admin=_is_admin(tg_user),
+                        show_seller_registration=not seller_approved,
+                    )
+                    await query.message.reply_text(
+                        get_text(lang, "start.dashboard"),
+                        reply_markup=markup,
+                    )
             return
-
         # ------------------------------------------------------------
         # Admin approve request
         # ------------------------------------------------------------
