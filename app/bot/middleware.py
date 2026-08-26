@@ -61,7 +61,7 @@ def require_active_user(handler):
                 # If the user is already inside a PostgreSQL-backed support workflow,
                 # allow the interaction to continue.
                 support_session = await get_session(session, user.id, "SUPPORT_TICKET")
-                if support_session:
+                if _is_suspended_support_allowed(update, state, support_session):
                     return await handler(update, context)
 
                 text = get_text(user.language, "suspended.message")
@@ -85,3 +85,19 @@ def require_active_user(handler):
         return await handler(update, context)
 
     return wrapper
+
+def _is_suspended_support_allowed(update: Update, state: dict | None, support_session) -> bool:
+    """
+    Suspended users may only use support-related interactions.
+    They must not be able to use marketplace commands just because
+    they have an active support session.
+    """
+    if _is_support_update(update, state):
+        return True
+
+    # Allow plain-text continuation of an active support workflow.
+    # Example: suspended user typed /support and is now describing the issue.
+    if support_session and update.effective_message and update.effective_message.text:
+        return not update.effective_message.text.strip().startswith("/")
+
+    return False
