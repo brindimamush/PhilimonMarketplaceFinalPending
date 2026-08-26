@@ -23,6 +23,7 @@ from app.models import (
     TicketStatus,
     User,
     UserStatus,
+    user,
 )
 from app.services.admin_service import (
     admin_search,
@@ -395,27 +396,32 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         # ------------------------------------------------------------
         # Admin suspension reason
         # ------------------------------------------------------------
-        suspend_session = await get_session(session, admin_user.id, "ADMIN_SUSPEND_REASON")
-        if suspend_session:
-            target_telegram_id = int(suspend_session.payload["telegram_id"])
+    suspend_session = await get_session(session, admin_user.id, "ADMIN_SUSPEND_REASON")
+    if suspend_session:
+        target_telegram_id = int(suspend_session.payload["telegram_id"])
 
-            try:
-                await suspend_user_by_telegram_id(
-                    session,
-                    tg_user,
-                    target_telegram_id,
-                    text,
-                )
-
-                await clear_workflow(session, admin_user.id, "ADMIN_SUSPEND_REASON")
-                await message.reply_text("User suspended.")
-            except DomainError as exc:
-                await message.reply_text(str(exc))
-            except Exception:
-                logger.exception("admin_suspend_failed")
-                await message.reply_text("Suspension failed.")
-
+        # Prevent self-suspension before calling the service.
+        if target_telegram_id == tg_user.id:
+            await clear_workflow(session, admin_user.id, "ADMIN_SUSPEND_REASON")
+            await message.reply_text("You cannot suspend your own account.")
             return True
+
+        try:
+            await suspend_user_by_telegram_id(
+                session,
+                tg_user,
+                target_telegram_id,
+                text,
+            )
+            await clear_workflow(session, admin_user.id, "ADMIN_SUSPEND_REASON")
+            await message.reply_text("User suspended.")
+        except DomainError as exc:
+            await message.reply_text(str(exc))
+        except Exception:
+            logger.exception("admin_suspend_failed")
+            await message.reply_text("Suspension failed.")
+
+        return True
 
     return False
 
@@ -529,6 +535,14 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     await query.answer("User not found", show_alert=True)
                     return True
 
+        # Prevent admin from suspending themselves.
+                if target.id == admin_user.id or target.telegram_id == tg_user.id:
+                    await query.answer(
+                        "You cannot suspend your own account.",
+                        show_alert=True,
+                    )
+                    return True
+
                 await start_workflow(
                     session,
                     admin_user.id,
@@ -538,7 +552,6 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 )
 
             await query.answer()
-
             if query.message:
                 await query.message.reply_text("Enter suspension reason.")
 
@@ -830,10 +843,16 @@ async def _render_user_detail(update: Update, user_id: UUID) -> None:
                     f"Shop Number: {seller.shop_number}",
                 ]
             )
+        viewer = update.effective_user
+        is_self = bool(viewer and user.telegram_id == viewer.id)
+
+        if is_self:
+            lines.append("")
+            lines.append("Self-suspension is disabled.")
 
         rows = []
 
-        if user.status == UserStatus.ACTIVE:
+        if user.status == UserStatus.ACTIVE and not is_self:
             rows.append(
                 [
                     InlineKeyboardButton(
@@ -841,16 +860,20 @@ async def _render_user_detail(update: Update, user_id: UUID) -> None:
                         callback_data=f"admin:user:suspend:{user.id}",
                     )
                 ]
+            
+        
             )
-        else:
+        elif user.status != UserStatus.ACTIVE:
             rows.append(
                 [
                     InlineKeyboardButton(
                         "Lift Suspension",
                         callback_data=f"admin:user:lift:{user.id}",
-                    )
+                )
                 ]
             )
+        
+    
 
         rows.append([InlineKeyboardButton("Back to Users", callback_data="admin:users:1")])
 

@@ -52,18 +52,63 @@ settings = get_settings()
 
 # --- User Management ---
 
-async def suspend_user_by_telegram_id(session: AsyncSession, admin_tg_user: TelegramUser, target_telegram_id: int, reason: str | None) -> User:
+async def suspend_user_by_telegram_id(
+    session: AsyncSession,
+    admin_tg_user: TelegramUser,
+    target_telegram_id: int,
+    reason: str | None,
+) -> User:
     admin_user = await get_or_create_user(session, admin_tg_user)
+
+    # Prevent admin from suspending their own Telegram account.
+    if int(target_telegram_id) == int(admin_tg_user.id):
+        raise DomainError("You cannot suspend your own account.")
+
     target = await get_user_by_telegram_id(session, target_telegram_id)
-    if not target: raise NotFoundError("User not found.")
-    if target.status == UserStatus.SUSPENDED: return target
+    if not target:
+        raise NotFoundError("User not found.")
+
+    # Extra safety: also compare internal DB user IDs.
+    if target.id == admin_user.id:
+        raise DomainError("You cannot suspend your own account.")
+
+    if target.status == UserStatus.SUSPENDED:
+        return target
 
     before = {"status": target.status.value}
+
     target.status = UserStatus.SUSPENDED
-    session.add(UserSuspension(user_id=target.id, reason=reason, suspended_by=admin_user.id, status=SuspensionStatus.ACTIVE))
-    
-    await write_audit(session, action="USER_SUSPENDED", actor_user_id=admin_user.id, actor_role="admin", entity_type="user", entity_id=target.id, before=before, after={"status": target.status.value}, metadata={"reason": reason})
-    await enqueue_outbox(session, "notification.telegram", notification_payload(target.telegram_id, get_text(target.language, "suspended.message")))
+
+    session.add(
+        UserSuspension(
+            user_id=target.id,
+            reason=reason,
+            suspended_by=admin_user.id,
+            status=SuspensionStatus.ACTIVE,
+        )
+    )
+
+    await write_audit(
+        session,
+        action="USER_SUSPENDED",
+        actor_user_id=admin_user.id,
+        actor_role="admin",
+        entity_type="user",
+        entity_id=target.id,
+        before=before,
+        after={"status": target.status.value},
+        metadata={"reason": reason},
+    )
+
+    await enqueue_outbox(
+        session,
+        "notification.telegram",
+        notification_payload(
+            target.telegram_id,
+            get_text(target.language, "suspended.message"),
+        ),
+    )
+
     return target
 
 async def lift_user_suspension_by_telegram_id(session: AsyncSession, admin_tg_user: TelegramUser, target_telegram_id: int) -> User:
