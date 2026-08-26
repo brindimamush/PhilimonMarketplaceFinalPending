@@ -92,6 +92,9 @@ async def close_support_ticket(session: AsyncSession, admin_tg_user: TelegramUse
     if not ticket: raise NotFoundError("Support ticket not found.")
     if ticket.status == TicketStatus.CLOSED:
         return ticket
+    # ENFORCEMENT: Spec requires tickets to be IN_PROGRESS before closing
+    if ticket.status != TicketStatus.IN_PROGRESS:
+        raise DomainError("Ticket must be responded to (In Progress) before it can be closed.")
     solution = (solution or "").strip()
     if len(solution) < 5: raise DomainError("Solution must be at least 5 characters.")
     if len(solution) > 2000: solution = solution[:2000]

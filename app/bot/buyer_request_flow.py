@@ -1,6 +1,6 @@
 # app/bot/buyer_request_flow.py
-from uuid import uuid4
 from io import BytesIO
+from uuid import uuid4
 
 import structlog
 from sqlalchemy import func, select
