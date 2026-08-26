@@ -1,8 +1,8 @@
 # app/bot/seller_registration_flow.py
 
-import structlog
 from uuid import uuid4
 
+import structlog
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -324,24 +324,24 @@ async def handle_seller_registration_callback(update: Update, context: ContextTy
         # ------------------------------------------------------------
         if data.startswith("seller_rules:"):
             action = data.split(":")[-1]
-
             if action == "agree":
                 buyer = await get_buyer_profile(session, user.id)
+                seller = await get_seller_profile(session, user.id)
 
                 if buyer:
-                    # Existing buyer:
-                    # Reuse phone/full name and skip directly to business details.
+                    # Existing buyer reuse profile data.
+                    # If a seller profile already exists, prefer its data.
+                    # This preserves admin-edited seller full names.
                     await update_workflow(
                         session,
                         user.id,
                         WORKFLOW,
                         "business_name",
                         {
-                            "phone_number": buyer.phone_number,
-                            "full_name": buyer.full_name,
+                            "phone_number": seller.phone_number if seller else buyer.phone_number,
+                            "full_name": seller.full_name if seller else buyer.full_name,
                         },
                     )
-
                     await query.answer()
                     await query.message.reply_text(
                         get_text(lang, "seller.prompt.business_name")

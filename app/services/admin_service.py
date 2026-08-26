@@ -442,11 +442,15 @@ async def update_seller_application_field(
 ) -> SellerProfile:
     """
     Admin edits one editable seller application field.
-
     Spec:
     - Admin can edit name/business/location/category/shop number.
     - Admin cannot edit phone number.
     - All edits must be audited.
+
+    Important:
+    If the user already has a buyer profile and admin edits full_name,
+    we also update BuyerProfile.full_name so the corrected name is not
+    overridden by the buyer profile later.
     """
     admin_user = await get_or_create_user(session, admin_tg_user)
 
@@ -455,7 +459,6 @@ async def update_seller_application_field(
         .where(SellerProfile.user_id == target_user_id)
         .with_for_update()
     )
-
     if not seller:
         raise NotFoundError("Seller profile not found.")
 
@@ -463,7 +466,6 @@ async def update_seller_application_field(
         raise DomainError("Field is not editable.")
 
     cleaned = " ".join((value or "").split())
-
     if len(cleaned) < 2:
         raise DomainError("Field value is too short.")
 
@@ -474,6 +476,13 @@ async def update_seller_application_field(
 
     before = {field: getattr(seller, field)}
     setattr(seller, field, cleaned)
+
+    buyer_updated = False
+    if field == "full_name":
+        buyer = await get_buyer_profile(session, target_user_id)
+        if buyer:
+            buyer.full_name = cleaned
+            buyer_updated = True
 
     await session.flush()
 
@@ -486,6 +495,7 @@ async def update_seller_application_field(
         entity_id=seller.id,
         before=before,
         after={field: cleaned},
+        metadata={"buyer_full_name_updated": buyer_updated} if buyer_updated else None,
     )
 
     return seller
