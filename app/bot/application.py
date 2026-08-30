@@ -1,5 +1,7 @@
 # app/bot/application.py
 
+from typing import Callable, Optional
+
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -32,30 +34,57 @@ from app.infrastructure.redis import RedisConversationState
 settings = get_settings()
 
 
-def build_application(redis_state: RedisConversationState) -> Application:
-    application = Application.builder().token(settings.telegram_bot_token).build()
+def build_application(
+    redis_state: RedisConversationState,
+    post_init: Optional[Callable] = None,
+) -> Application:
+    builder = Application.builder().token(settings.telegram_bot_token)
+
+    if post_init is not None:
+        builder.post_init(post_init)
+
+    application = builder.build()
     application.bot_data["state"] = redis_state
 
     # Core commands
-    application.add_handler(CommandHandler("start", log_correlation(require_active_user(start_cmd))))
-    application.add_handler(CommandHandler("menu", log_correlation(require_active_user(start_cmd))))
+    application.add_handler(
+        CommandHandler("start", log_correlation(require_active_user(start_cmd)))
+    )
+    application.add_handler(
+        CommandHandler("menu", log_correlation(require_active_user(start_cmd)))
+    )
 
     # Buyer commands
-    application.add_handler(CommandHandler("newrequest", log_correlation(require_active_user(new_request_cmd))))
-    application.add_handler(CommandHandler("myrequests", log_correlation(require_active_user(my_requests_cmd))))
+    application.add_handler(
+        CommandHandler("newrequest", log_correlation(require_active_user(new_request_cmd)))
+    )
+    application.add_handler(
+        CommandHandler("myrequests", log_correlation(require_active_user(my_requests_cmd)))
+    )
 
     # Seller commands
-    application.add_handler(CommandHandler("myoffers", log_correlation(require_active_user(my_offers_cmd))))
+    application.add_handler(
+        CommandHandler("myoffers", log_correlation(require_active_user(my_offers_cmd)))
+    )
     application.add_handler(
         CommandHandler("registerseller", log_correlation(require_active_user(start_seller_registration)))
     )
+
     # Support and language
-    application.add_handler(CommandHandler("support", log_correlation(require_active_user(support_cmd))))
-    application.add_handler(CommandHandler("language", log_correlation(require_active_user(language_cmd))))
+    application.add_handler(
+        CommandHandler("support", log_correlation(require_active_user(support_cmd)))
+    )
+    application.add_handler(
+        CommandHandler("language", log_correlation(require_active_user(language_cmd)))
+    )
 
     # Admin commands
-    application.add_handler(CommandHandler("admin", log_correlation(require_active_user(admin_cmd))))
-    application.add_handler(CommandHandler("search", log_correlation(require_active_user(search_cmd))))
+    application.add_handler(
+        CommandHandler("admin", log_correlation(require_active_user(admin_cmd)))
+    )
+    application.add_handler(
+        CommandHandler("search", log_correlation(require_active_user(search_cmd)))
+    )
 
     # Contact sharing must be routed because both buyer and seller registration use it.
     application.add_handler(
@@ -73,6 +102,8 @@ def build_application(redis_state: RedisConversationState) -> Application:
     )
 
     # Callback router
-    application.add_handler(CallbackQueryHandler(log_correlation(require_active_user(callback_router))))
+    application.add_handler(
+        CallbackQueryHandler(log_correlation(require_active_user(callback_router)))
+    )
 
     return application
