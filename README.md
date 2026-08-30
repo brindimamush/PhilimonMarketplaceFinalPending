@@ -4,11 +4,24 @@
 
 A production-oriented asynchronous Telegram bot that connects buyers and sellers in a managed marketplace workflow.
 
-The bot supports buyer purchase requests, seller registration and approval, seller offers, buyer offer selection, admin settlement, support tickets, multilingual UI, audit logging, idempotent actions, and background processing using the Transactional Outbox pattern.
+The bot supports:
+
+- buyer registration
+- seller registration and approval
+- purchase request creation with image upload
+- seller offers
+- buyer offer selection
+- admin settlement
+- support tickets with back-and-forth conversation
+- multilingual UI
+- audit logging
+- idempotent actions
+- background processing using the Transactional Outbox pattern
+- easy switching between **long polling** and **webhook**
 
 ---
 
-## ✨ Features
+## ✨ Core Features
 
 ### 👤 User Features
 
@@ -22,98 +35,44 @@ The bot supports buyer purchase requests, seller registration and approval, sell
 - Support ticket creation and follow-up
 - Language selection: English and Amharic
 
-### 🛒 Buyer Flow
-
-Buyers can:
-
-1. Register as a buyer.
-2. Create a purchase request:
-   - Upload item image
-   - Enter description
-   - Enter quantity
-   - Confirm and submit
-3. Track request status.
-4. View seller offers.
-5. Select one offer.
-6. Wait for admin settlement.
-
-### 🏪 Seller Flow
-
-Sellers can:
-
-1. Submit a seller application.
-2. Wait for admin approval.
-3. Receive broadcasted approved purchase requests.
-4. Accept or reject requests.
-5. Submit a price offer.
-6. Track submitted offers.
-7. Get notified when their offer is selected.
-
-### 🧑‍💼 Admin Features
-
-Admins can:
-
-- Open admin dashboard
-- Search users, phone numbers, Telegram IDs, usernames, and request numbers
-- Approve or decline buyer purchase requests
-- Approve, decline, or edit seller applications
-- Suspend users
-- Lift user suspension
-- Respond to support tickets
-- Close support tickets
-- Manage settlement:
-  - Pending
-  - Settled
-  - Cancelled
-
 ---
 
-## 🛡 Safety and Access Rules
+## 🎧 Support Ticket Behavior
 
-### Registration Requirements
+Support is now conversation-based.
 
-Protected commands require proper registration:
+### User side
 
-| Command | Requirement |
-|---|---|
-| `/newrequest` | Must be registered as a buyer |
-| `/myrequests` | Must be registered as a buyer |
-| `/myoffers` | Must be an approved seller |
-| `/registerseller` | Available to active users |
-| `/support` | Available even to suspended users |
+- User runs `/support`
+- If no active ticket exists:
+  - bot asks for a description
+  - a new ticket is created
+- If an active ticket already exists:
+  - bot tells the user to reply directly
+  - plain text messages are appended to the active ticket
 
-If an unregistered user tries to use a protected command, the bot tells them to register first.
+### Admin side
 
----
+Admin receives ticket notifications with:
 
-### Suspended Users
+- `View Ticket`
+- `Respond`
+- `Close Ticket`
 
-Suspended users are blocked from marketplace actions.
+### Respond
 
-They can still:
+- Admin can send multiple responses
+- Every response is stored in the ticket thread
+- User is notified immediately
+- User can reply back
+- Admin is notified of every user reply
 
-- Use `/support`
-- Open a support ticket
-- Continue an active support workflow
+### Close
 
-This allows suspended users to contact support and appeal their suspension.
-
----
-
-### Admin Self-Suspension Protection
-
-Admins are protected from accidentally suspending their own account.
-
-The system blocks self-suspension at multiple levels:
-
-1. UI level:
-   - Suspend button can be hidden or blocked for the admin's own profile.
-
-2. Workflow level:
-   - Suspension reason workflow is stopped if the target is the admin.
-
-3. Service level:
-   - `suspend_user_by_telegram_id()` rejects self-suspension even if the UI is bypassed.
+- Closing is only allowed after at least one admin response
+- Admin must provide a clear solution
+- The solution is stored
+- The user is notified with the solution
 
 ---
 
@@ -145,9 +104,9 @@ A background worker later processes those events.
 
 This ensures:
 
-- Database state and notifications do not drift apart.
-- Messages are retried on failure.
-- Broadcasts are processed asynchronously.
+- database state and notifications do not drift apart
+- messages are retried on failure
+- broadcasts are processed asynchronously
 
 ---
 
@@ -157,22 +116,10 @@ State-changing operations use idempotency keys.
 
 This protects against:
 
-- Duplicate Telegram callbacks
-- Network retries
-- Double-clicks
-- Repeated user actions
-
-Examples:
-
-- Buyer registration
-- Seller application submission
-- Purchase request creation
-- Offer submission
-- Offer selection
-- Request approval
-- Request decline
-- Seller accept/reject
-- Suspension lifting
+- duplicate Telegram callbacks
+- network retries
+- double-clicks
+- repeated user actions
 
 ---
 
@@ -182,35 +129,6 @@ Purchase requests follow a strict lifecycle.
 
 Invalid transitions are rejected.
 
-Example lifecycle:
-
-```text
-PENDING_ADMIN_APPROVAL
-    ↓
-APPROVED
-    ↓
-BROADCASTING
-    ↓
-COLLECTING_SELLERS
-    ↓
-COLLECTING_OFFERS
-    ↓
-BUYER_SELECTING
-    ↓
-SELLER_SELECTED
-    ↓
-ADMIN_SETTLEMENT
-    ↓
-CLOSED
-```
-
-Other terminal states:
-
-```text
-DECLINED
-CANCELLED
-```
-
 ---
 
 ### ✅ Audit Logging
@@ -219,81 +137,16 @@ Important actions are written to `audit_logs`.
 
 Audited actions include:
 
-- User first seen
-- Buyer registration
-- Seller application creation/update
-- Seller approval/decline
-- Seller application edits
-- Request approval/decline
-- Offer submission
-- Offer selection
-- User suspension
-- Suspension lifting
-- Support ticket creation/response/closure
-
----
-
-### ✅ Rate Limiting
-
-Redis-based rate limiting protects sensitive flows such as:
-
-- Starting a new purchase request
-- Uploading images
-
-This helps prevent spam, accidental loops, and abuse.
-
----
-
-### ✅ Image Validation
-
-Buyer request images are validated before use.
-
-The bot checks:
-
-- File size
-- Image decodability
-- MIME type
-- Allowed formats
-
-Allowed formats:
-
-- JPEG
-- PNG
-- WEBP
-
-The bot does not trust file names or extensions.
-
----
-
-### ✅ Phone Validation
-
-Ethiopian phone numbers are validated and normalized using `phonenumbers`.
-
-The canonical format stored is E.164.
-
-Examples accepted:
-
-- `+2519XXXXXXXX`
-- `09XXXXXXXX`
-
----
-
-## 🌐 Internationalization
-
-Supported languages:
-
-- English: `en`
-- Amharic: `am`
-
-Users can change language using:
-
-```text
-/language
-```
-
-Language preference is persisted in the database.
-
-Admin-facing UI remains English.
+- user first seen
+- buyer registration
+- seller application creation/update
+- seller approval/decline
+- request approval/decline
+- offer submission
+- offer selection
+- support responses
+- support closure
+- suspension/lifting
 
 ---
 
@@ -315,9 +168,9 @@ Admin-facing UI remains English.
 
 ---
 
-## 🚀 Getting Started
+# 🚀 Getting Started
 
-### 1. Clone the repository
+## 1. Clone the repository
 
 ```bash
 git clone your-repository-url
@@ -326,7 +179,7 @@ cd marketplace-bot
 
 ---
 
-### 2. Create a virtual environment
+## 2. Create a virtual environment
 
 ```bash
 python -m venv .venv
@@ -341,7 +194,7 @@ On Windows:
 
 ---
 
-### 3. Install dependencies
+## 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -349,7 +202,7 @@ pip install -r requirements.txt
 
 ---
 
-### 4. Configure environment variables
+## 4. Configure environment variables
 
 Create a `.env` file in the project root.
 
@@ -366,13 +219,15 @@ POSTGRES_DB=marketplace
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 
-# Comma-separated Telegram admin IDs
 ADMIN_TELEGRAM_IDS=123456789,987654321
+
+BOT_MODE=polling
+DROP_PENDING_UPDATES=false
 ```
 
 ---
 
-### 5. Run database migrations
+## 5. Run database migrations
 
 ```bash
 alembic upgrade head
@@ -380,7 +235,7 @@ alembic upgrade head
 
 ---
 
-### 6. Start the bot
+## 6. Start the bot
 
 ```bash
 python main.py
@@ -388,13 +243,13 @@ python main.py
 
 ---
 
-### 7. Start the background worker
+## 7. Start the background worker
 
 The worker processes:
 
-- Outbox events
-- Broadcast jobs
-- Notification deliveries
+- outbox events
+- broadcast jobs
+- notification deliveries
 
 Run:
 
@@ -411,7 +266,214 @@ python worker_main.py
 
 ---
 
-## 🧑‍💼 Admin Setup
+# 📡 Long Polling vs Webhook
+
+This bot supports **two transport modes**:
+
+- `polling` — easiest for local development
+- `webhook` — recommended for production
+
+Switching is done using one environment variable:
+
+```env
+BOT_MODE=polling
+```
+
+or
+
+```env
+BOT_MODE=webhook
+```
+
+No code changes are needed.
+
+---
+
+## Option A: Long Polling
+
+This is the simplest mode.
+
+### `.env`
+
+```env
+BOT_MODE=polling
+```
+
+### Run
+
+```bash
+python main.py
+python worker_main.py
+```
+
+### When to use polling
+
+Use polling for:
+
+- local development
+- quick testing
+- environments where you do not have HTTPS / public domain yet
+
+---
+
+## Option B: Webhook
+
+Use webhook mode when you want a production setup.
+
+Telegram will send updates to your server via HTTPS.
+
+---
+
+### Telegram webhook requirements
+
+Telegram requires:
+
+- HTTPS
+- a publicly reachable URL
+- one of these ports:
+  - `443`
+  - `80`
+  - `88`
+  - `8443`
+
+---
+
+### Webhook `.env` example
+
+```env
+BOT_MODE=webhook
+
+PUBLIC_WEBHOOK_URL=https://bot.example.com/webhook/CHANGE_ME
+WEBHOOK_LISTEN_HOST=0.0.0.0
+WEBHOOK_LISTEN_PORT=8443
+WEBHOOK_SECRET_TOKEN=CHANGE_ME_TO_A_LONG_RANDOM_VALUE
+
+DROP_PENDING_UPDATES=false
+```
+
+If your public URL is:
+
+```text
+https://bot.example.com/webhook/CHANGE_ME
+```
+
+then the bot will automatically use:
+
+```text
+webhook/CHANGE_ME
+```
+
+as the local webhook path.
+
+You can override it manually if needed:
+
+```env
+WEBHOOK_PATH=webhook/CHANGE_ME
+```
+
+---
+
+## Webhook deployment patterns
+
+### Pattern 1: Reverse proxy terminates TLS (recommended)
+
+This is the most common production setup:
+
+```text
+Telegram
+   ↓ HTTPS
+Nginx / Caddy / Traefik
+   ↓ HTTP
+Bot webhook server on port 8443
+```
+
+In this case:
+
+- leave `WEBHOOK_CERT_PATH` empty
+- leave `WEBHOOK_KEY_PATH` empty
+- let Nginx/Caddy handle TLS
+
+---
+
+### Nginx example
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name bot.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/bot.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bot.example.com/privkey.pem;
+
+    location /webhook/ {
+        proxy_pass http://127.0.0.1:8443;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+}
+```
+
+Then run:
+
+```bash
+python main.py
+python worker_main.py
+```
+
+---
+
+### Pattern 2: Bot terminates TLS directly
+
+If you want the bot itself to serve HTTPS, set:
+
+```env
+WEBHOOK_CERT_PATH=/path/to/cert.pem
+WEBHOOK_KEY_PATH=/path/to/key.pem
+```
+
+Then run:
+
+```bash
+python main.py
+python worker_main.py
+```
+
+For production, use a trusted certificate.
+
+---
+
+## How the mode switch works
+
+The entrypoint reads:
+
+```env
+BOT_MODE=polling
+```
+
+or
+
+```env
+BOT_MODE=webhook
+```
+
+Then:
+
+- if `polling`:
+  - `app.run_polling(...)` is used
+  - webhook is removed automatically
+- if `webhook`:
+  - `app.run_webhook(...)` is used
+  - Telegram update URL is registered automatically
+
+You do **not** need to modify handler code to switch modes.
+
+---
+
+# 🧑‍💼 Admin Setup
 
 Set admin Telegram IDs in `.env`:
 
@@ -434,9 +496,9 @@ Admins can use:
 
 ---
 
-## 📱 Bot Commands
+# 📱 Bot Commands
 
-### General Commands
+## General Commands
 
 | Command | Description |
 |---|---|
@@ -447,7 +509,7 @@ Admins can use:
 
 ---
 
-### Buyer Commands
+## Buyer Commands
 
 | Command | Description |
 |---|---|
@@ -456,7 +518,7 @@ Admins can use:
 
 ---
 
-### Seller Commands
+## Seller Commands
 
 | Command | Description |
 |---|---|
@@ -465,7 +527,7 @@ Admins can use:
 
 ---
 
-### Admin Commands
+## Admin Commands
 
 | Command | Description |
 |---|---|
@@ -483,196 +545,62 @@ Example search usage:
 
 ---
 
-## 🔄 Marketplace Workflow
+# 🛡 Safety and Access Rules
 
-### Buyer Request Workflow
+## Registration Requirements
 
-```text
-/start
-  ↓
-Register as Buyer
-  ↓
-/newrequest
-  ↓
-Send item image
-  ↓
-Send description
-  ↓
-Send quantity
-  ↓
-Confirm and submit
-  ↓
-Admin approval
-  ↓
-Broadcast to sellers
-  ↓
-Sellers accept
-  ↓
-Sellers submit offers
-  ↓
-Buyer selects offer
-  ↓
-Admin settlement
-```
+Protected commands require proper registration:
+
+| Command | Requirement |
+|---|---|
+| `/newrequest` | Must be registered as a buyer |
+| `/myrequests` | Must be registered as a buyer |
+| `/myoffers` | Must be an approved seller |
+| `/registerseller` | Available to active users |
+| `/support` | Available even to suspended users |
 
 ---
 
-### Seller Application Workflow
+## Suspended Users
 
-```text
-/registerseller
-  ↓
-Accept seller rules
-  ↓
-Share phone number
-  ↓
-Enter full name if needed
-  ↓
-Enter business name
-  ↓
-Enter location
-  ↓
-Enter product category
-  ↓
-Enter shop number
-  ↓
-Confirm and submit
-  ↓
-Admin approval
-```
+Suspended users are blocked from marketplace actions.
 
-If the user already has a buyer profile, the seller application reuses buyer phone and full name where appropriate.
+They can still:
+
+- use `/support`
+- open a support ticket
+- reply to an active support ticket
+- continue an active support workflow
+
+This allows suspended users to contact support and appeal their suspension.
 
 ---
 
-### Admin Settlement Workflow
+## Admin Self-Suspension Protection
 
-After a buyer selects an offer, admins receive a settlement panel.
+Admins are protected from accidentally suspending their own account.
 
-Actions:
+The system blocks self-suspension at multiple levels:
 
-- `Pending`
-- `Settled`
-- `Cancel`
-
-Cancellation requires a reason.
+1. UI level
+2. workflow level
+3. service level
 
 ---
 
-## 🗂 Database Models
+# 🐞 Troubleshooting
 
-### Core User Models
-
-- `User`
-- `BuyerProfile`
-- `SellerProfile`
-- `Role`
-- `UserRole`
-
----
-
-### Marketplace Models
-
-- `PurchaseRequest`
-- `RequestSeller`
-- `SellerOffer`
-- `SupportTicket`
-
----
-
-### System Models
-
-- `AuditLog`
-- `IdempotencyRecord`
-- `OutboxEvent`
-- `NotificationDelivery`
-- `BroadcastJob`
-- `UserSuspension`
-- `ConversationSession`
-
----
-
-## 🔐 Security Notes
-
-### Do not commit secrets
-
-Never commit:
-
-```text
-.env
-bot token
-database password
-redis credentials
-```
-
-The `.gitignore` should exclude sensitive files.
-
----
-
-### Admin IDs
-
-Only configured Telegram IDs can access admin features.
-
-Admin authorization is checked in:
-
-- Admin command handlers
-- Admin callback handlers
-- Admin text workflows
-
----
-
-### Suspended user restrictions
-
-Suspended users cannot:
-
-- Create purchase requests
-- View buyer dashboards
-- Submit seller offers
-- Accept broadcasted requests
-- Continue marketplace workflows
-
-They can still contact support.
-
----
-
-## 🧪 Local Development Checklist
-
-Before running:
-
-```bash
-alembic upgrade head
-```
-
-Ensure:
-
-- PostgreSQL is running
-- Redis is running
-- `.env` exists
-- `TELEGRAM_BOT_TOKEN` is valid
-- `ADMIN_TELEGRAM_IDS` is set
-
-Then run:
-
-```bash
-python main.py
-python worker_main.py
-```
-
----
-
-## 🐞 Troubleshooting
-
-### Bot does not respond
+## Bot does not respond
 
 Check:
 
-- Bot token is correct
-- Bot is running
-- Network access to Telegram API is available
+- bot token is correct
+- bot process is running
+- network access to Telegram API is available
 
 ---
 
-### Admin dashboard says `Not authorized`
+## Admin dashboard says `Not authorized`
 
 Ensure your Telegram ID is included in:
 
@@ -688,7 +616,7 @@ ADMIN_TELEGRAM_IDS=111111111,222222222
 
 ---
 
-### Broadcasts are not sent
+## Broadcasts are not sent
 
 Ensure the worker is running:
 
@@ -704,7 +632,7 @@ Also check:
 
 ---
 
-### Database migration errors
+## Database migration errors
 
 Run:
 
@@ -716,47 +644,45 @@ If Alembic cannot find models, ensure `app.models` is imported in `alembic/env.p
 
 ---
 
-### Commands require registration
+## Webhook does not receive updates
 
-If a user sees:
+Check:
 
-```text
-Register as a buyer first
+- `BOT_MODE=webhook`
+- `PUBLIC_WEBHOOK_URL` is correct
+- public URL is HTTPS
+- domain is publicly reachable
+- port is allowed by Telegram
+- reverse proxy forwards the path correctly
+- bot process is running
+
+You can inspect webhook info with:
+
+```bash
+curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 ```
-
-or
-
-```text
-Register as a seller first
-```
-
-this is expected behavior.
-
-The user must complete the relevant registration flow before using the command.
 
 ---
 
-## 🧱 Design Principles
+# 🧱 Design Principles
 
 This project is built around the following principles:
 
-- Clean separation of concerns
-- Domain-driven boundaries
-- Explicit state transitions
-- Idempotent operations
-- Transactional consistency
-- Retry-safe background processing
-- Auditability
-- Multilingual user experience
+- clean separation of concerns
+- domain-driven boundaries
+- explicit state transitions
+- idempotent operations
+- transactional consistency
+- retry-safe background processing
+- auditability
+- multilingual user experience
 - Telegram-native UX
+- easy deployment mode switching
 
 ---
 
 ## 📄 License
 
-Add your license here.
-
-Example:
 
 ```text
 MIT
